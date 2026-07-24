@@ -49,6 +49,7 @@ h1 { font-size:1.1rem; } h1 span { color:#4fc3f7; }
 .opt.correct { border-left-color:#22c55e; background:#052e16; color:#4ade80; font-weight:700; }
 .explicacion { margin-top:10px; font-size:.8rem; color:#9ca3af; }
 .loading { text-align:center; padding:20px 0; color:#4fc3f7; }
+.answer-big { font-size:1.7rem; font-weight:800; color:#4ade80; text-align:center; padding:16px 6px; line-height:1.3; }
 .actions-row { display:flex; gap:10px; justify-content:center; margin-top:12px; }
 .actions-row button { flex:1; max-width:180px; padding:10px; border:none; border-radius:10px;
                        font-size:.95rem; font-weight:700; cursor:pointer; background:#2563eb; color:#fff; }
@@ -96,6 +97,7 @@ h1 { font-size:1.1rem; } h1 span { color:#4fc3f7; }
     <button id="model-save">OK</button>
   </div>
   <div class="cfg-hint">La key se guarda solo en este navegador (localStorage). Conseguila en openrouter.ai/keys</div>
+  <div class="cfg-hint" id="key-status" style="color:#4ade80;"></div>
 </div>
 <div id="toast"></div>
 
@@ -133,6 +135,11 @@ function updateApiDot() {
   const dot = $('api-dot');
   if (apiKey) { dot.classList.remove('off'); dot.title = 'API conectada'; }
   else         { dot.classList.add('off');    dot.title = 'API no configurada'; }
+  const st = $('key-status');
+  st.textContent = apiKey
+    ? `Key guardada: ${apiKey.slice(0,8)}...${apiKey.slice(-4)} (${apiKey.length} caracteres)`
+    : 'Sin key guardada';
+  st.style.color = apiKey ? '#4ade80' : '#f87171';
 }
 updateApiDot();
 
@@ -256,13 +263,10 @@ function renderError(msg) {
 
 function renderResult(r, dataUrl) {
   if (r.error) { renderError(r.error); return; }
-  const opts = (r.opciones || []).map(o =>
-    `<div class="opt ${o.letra === r.correcta ? 'correct' : ''}">${escapeHtml(o.letra)}) ${escapeHtml(o.texto)}${o.letra === r.correcta ? ' ✓' : ''}</div>`
-  ).join('');
+  const correctOpt = (r.opciones || []).find(o => o.letra === r.correcta);
+  const answerText = correctOpt ? `${correctOpt.letra}) ${correctOpt.texto}` : (r.correcta || '?');
   $('result-panel').innerHTML = `
-    <div class="q-text">${escapeHtml(r.pregunta || '')}</div>
-    ${opts}
-    ${r.explicacion ? `<div class="explicacion">${escapeHtml(r.explicacion)}</div>` : ''}
+    <div class="answer-big">${escapeHtml(answerText)}</div>
     <div class="actions-row"><button id="btn-retry">🔄 Nueva foto</button></div>`;
   $('btn-retry').onclick = resetToCamera;
   showToast('Respuesta: ' + (r.correcta || '?'), 'ok');
