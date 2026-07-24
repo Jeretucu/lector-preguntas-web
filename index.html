@@ -123,9 +123,10 @@ const $ = id => document.getElementById(id);
 // ==== config ====
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const DEFAULT_MODEL = 'google/gemini-2.5-flash';
-const PROMPT = `Sos un asistente que responde preguntas de opción múltiple mostradas en una imagen (foto de una pantalla). Analizá la imagen, identificá el enunciado de la pregunta y las opciones disponibles, y determiná cuál es la opción correcta.
+const PROMPT = `Sos un asistente que responde preguntas de opción múltiple mostradas en una imagen (foto de una pantalla). Analizá la imagen, identificá el enunciado de la pregunta y las opciones disponibles, y determiná cuál o cuáles opciones son correctas (algunas preguntas piden elegir más de una, ej. "Choose 2 answers").
 Respondé ÚNICAMENTE con un JSON válido, sin texto adicional, sin bloques de código markdown, con este formato exacto:
-{"pregunta": "enunciado de la pregunta", "opciones": [{"letra": "A", "texto": "..."}, {"letra": "B", "texto": "..."}], "correcta": "B", "explicacion": "breve justificación de por qué es la opción correcta"}
+{"pregunta": "enunciado de la pregunta", "opciones": [{"letra": "A", "texto": "..."}, {"letra": "B", "texto": "..."}], "correcta": ["B"], "explicacion": "breve justificación de por qué es la opción correcta"}
+El campo "correcta" es SIEMPRE un array de letras, incluso si hay una sola correcta (ej. ["B"]) o varias (ej. ["A","C"]).
 Si la imagen no contiene una pregunta de opción múltiple legible, respondé: {"error": "No se detectó una pregunta de opción múltiple en la imagen"}`;
 
 let apiKey = localStorage.getItem('lp_api_key') || '';
@@ -261,15 +262,23 @@ function renderError(msg) {
   showToast('Error al analizar', 'err');
 }
 
+function correctLetras(r) {
+  if (Array.isArray(r.correcta)) return r.correcta.map(s => String(s).trim()).filter(Boolean);
+  return String(r.correcta || '').split(',').map(s => s.trim()).filter(Boolean);
+}
+
 function renderResult(r, dataUrl) {
   if (r.error) { renderError(r.error); return; }
-  const correctOpt = (r.opciones || []).find(o => o.letra === r.correcta);
-  const answerText = correctOpt ? `${correctOpt.letra}. ${correctOpt.texto}` : (r.correcta || '?');
+  const letras = correctLetras(r);
+  const correctOpts = (r.opciones || []).filter(o => letras.includes(o.letra));
+  const answerHtml = correctOpts.length
+    ? correctOpts.map(o => `<div class="answer-big">${escapeHtml(o.letra + '. ' + o.texto)}</div>`).join('')
+    : `<div class="answer-big">${escapeHtml(letras.join(', ') || '?')}</div>`;
   $('result-panel').innerHTML = `
-    <div class="answer-big">${escapeHtml(answerText)}</div>
+    ${answerHtml}
     <div class="actions-row"><button id="btn-retry">🔄 Nueva foto</button></div>`;
   $('btn-retry').onclick = resetToCamera;
-  showToast('Respuesta: ' + (r.correcta || '?'), 'ok');
+  showToast('Respuesta: ' + (letras.join(', ') || '?'), 'ok');
   saveHistory(r);
 }
 
@@ -298,7 +307,7 @@ function renderHistory() {
   el.innerHTML = records.map(r => `
     <div class="record">
       <div class="q">${escapeHtml(r.pregunta || '')}</div>
-      <div class="a">Correcta: ${escapeHtml(r.correcta || '?')}</div>
+      <div class="a">Correcta: ${escapeHtml(correctLetras(r).join(', ') || '?')}</div>
       <div class="t">${new Date(r.ts).toLocaleString('es-AR')}</div>
     </div>`).join('');
 }
