@@ -264,7 +264,7 @@ function renderError(msg) {
 function renderResult(r, dataUrl) {
   if (r.error) { renderError(r.error); return; }
   const correctOpt = (r.opciones || []).find(o => o.letra === r.correcta);
-  const answerText = correctOpt ? `${correctOpt.letra}) ${correctOpt.texto}` : (r.correcta || '?');
+  const answerText = correctOpt ? `${correctOpt.letra}. ${correctOpt.texto}` : (r.correcta || '?');
   $('result-panel').innerHTML = `
     <div class="answer-big">${escapeHtml(answerText)}</div>
     <div class="actions-row"><button id="btn-retry">🔄 Nueva foto</button></div>`;
