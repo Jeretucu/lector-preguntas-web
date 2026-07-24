@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#111827">
+<title>Lector de Preguntas</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#0b1220; color:#e5e7eb; font-family:'Segoe UI',sans-serif; min-height:100vh; display:flex; flex-direction:column; }
+
+/* ---- header ---- */
+header { padding:10px 14px; display:flex; align-items:center; justify-content:space-between; }
+h1 { font-size:1.1rem; } h1 span { color:#4fc3f7; }
+#startbtn { padding:7px 16px; border:2px solid #16a34a; border-radius:20px; background:#0b1220;
+            color:#fff; font-size:.85rem; font-weight:600; cursor:pointer; }
+#startbtn.on { background:#16a34a; }
+
+/* ---- config panel ---- */
+#cfg-toggle { background:none; border:none; color:#6b7280; font-size:1.2rem; cursor:pointer; padding:4px 8px; }
+#cfg-toggle:hover { color:#e5e7eb; }
+.api-dot { width:7px; height:7px; border-radius:50%; background:#22c55e; display:inline-block; margin-right:5px; }
+.api-dot.off { background:#374151; }
+#cfg-panel { background:#111827; border-bottom:1px solid #1f2937; padding:10px 14px;
+             display:flex; flex-direction:column; gap:7px; }
+.cfg-row { display:flex; gap:8px; align-items:center; }
+.cfg-row label { font-size:.72rem; color:#9ca3af; white-space:nowrap; min-width:56px; }
+.cfg-row input { flex:1; background:#1f2937; border:1px solid #374151; border-radius:8px;
+                 padding:7px 10px; color:#e5e7eb; font-size:.8rem; font-family:monospace; }
+.cfg-row button { padding:7px 12px; border:none; border-radius:8px; background:#2563eb;
+                  color:#fff; font-size:.8rem; font-weight:600; cursor:pointer; white-space:nowrap; }
+.cfg-hint { font-size:.68rem; color:#4b5563; }
+
+/* ---- stage / camara ---- */
+.stage { position:relative; background:#000; width:100%; }
+#video { width:100%; display:block; max-height:45vh; object-fit:contain; background:#000; }
+#snapshot { width:100%; display:none; max-height:45vh; object-fit:contain; background:#000; }
+#capture-btn { position:absolute; bottom:12px; left:50%; transform:translateX(-50%);
+               width:60px; height:60px; border-radius:50%; background:#fff; border:4px solid #9ca3af;
+               cursor:pointer; }
+#capture-btn:disabled { opacity:.3; }
+
+/* ---- panel resultado ---- */
+.result-panel { padding:14px; border-bottom:1px solid #1f2937; }
+.result-empty { color:#374151; font-style:italic; text-align:center; padding:20px 0; }
+.q-text { font-size:1.05rem; font-weight:600; margin-bottom:10px; }
+.opt { padding:9px 12px; border-radius:8px; background:#1f2937; margin-bottom:6px; font-size:.92rem;
+       border-left:4px solid #374151; }
+.opt.correct { border-left-color:#22c55e; background:#052e16; color:#4ade80; font-weight:700; }
+.explicacion { margin-top:10px; font-size:.8rem; color:#9ca3af; }
+.loading { text-align:center; padding:20px 0; color:#4fc3f7; }
+.actions-row { display:flex; gap:10px; justify-content:center; margin-top:12px; }
+.actions-row button { flex:1; max-width:180px; padding:10px; border:none; border-radius:10px;
+                       font-size:.95rem; font-weight:700; cursor:pointer; background:#2563eb; color:#fff; }
+
+/* ---- toast ---- */
+#toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+         background:#1f2937; border:1px solid #374151; border-radius:12px;
+         padding:10px 18px; font-size:.9rem; font-weight:600; color:#fff;
+         opacity:0; transition:opacity .3s; pointer-events:none; z-index:99; text-align:center; }
+#toast.show { opacity:1; }
+#toast.ok   { border-color:#22c55e; color:#4ade80; }
+#toast.err  { border-color:#dc2626; color:#f87171; }
+
+/* ---- historial ---- */
+.history-header { padding:10px 14px 6px; display:flex; justify-content:space-between; align-items:center; }
+.history-header h2 { font-size:.9rem; color:#9ca3af; }
+#btn-clear { font-size:.75rem; color:#6b7280; background:none; border:none; cursor:pointer; }
+#history { overflow-y:auto; flex:1; padding:0 14px 14px; }
+.record { background:#1f2937; border-radius:8px; padding:10px 12px; margin-bottom:8px;
+          border-left:5px solid #22c55e; cursor:pointer; }
+.record .q { font-size:.85rem; color:#e5e7eb; }
+.record .a { font-size:.8rem; color:#4ade80; font-weight:700; margin-top:3px; }
+.record .t { font-size:.7rem; color:#6b7280; margin-top:2px; }
+.history-empty { color:#374151; font-style:italic; text-align:center; padding:20px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🧠 <span>Preguntas</span></h1>
+  <div style="display:flex;align-items:center;gap:8px;">
+    <span id="api-dot" class="api-dot off" title="API no configurada"></span>
+    <button id="cfg-toggle" title="Configurar API Key">⚙</button>
+    <button id="startbtn">▶ Iniciar cámara</button>
+  </div>
+</header>
+<div id="cfg-panel" style="display:none;">
+  <div class="cfg-row">
+    <label>API Key</label>
+    <input id="apikey-input" type="password" placeholder="OpenRouter API Key (sk-or-...)" />
+    <button id="cfg-save">OK</button>
+  </div>
+  <div class="cfg-row">
+    <label>Modelo</label>
+    <input id="model-input" type="text" placeholder="google/gemini-2.5-flash" />
+    <button id="model-save">OK</button>
+  </div>
+  <div class="cfg-hint">La key se guarda solo en este navegador (localStorage). Conseguila en openrouter.ai/keys</div>
+</div>
+<div id="toast"></div>
+
+<div class="stage">
+  <video id="video" playsinline muted autoplay></video>
+  <img id="snapshot" alt="captura" />
+  <button id="capture-btn" disabled title="Capturar"></button>
+</div>
+
+<div class="result-panel" id="result-panel">
+  <div class="result-empty" id="result-empty">Iniciá la cámara y apuntá a la pregunta</div>
+</div>
+
+<div class="history-header">
+  <h2>Historial</h2>
+  <button id="btn-clear">Limpiar todo</button>
+</div>
+<div id="history"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// ==== config ====
+const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const DEFAULT_MODEL = 'google/gemini-2.5-flash';
+const PROMPT = `Sos un asistente que responde preguntas de opción múltiple mostradas en una imagen (foto de una pantalla). Analizá la imagen, identificá el enunciado de la pregunta y las opciones disponibles, y determiná cuál es la opción correcta.
+Respondé ÚNICAMENTE con un JSON válido, sin texto adicional, sin bloques de código markdown, con este formato exacto:
+{"pregunta": "enunciado de la pregunta", "opciones": [{"letra": "A", "texto": "..."}, {"letra": "B", "texto": "..."}], "correcta": "B", "explicacion": "breve justificación de por qué es la opción correcta"}
+Si la imagen no contiene una pregunta de opción múltiple legible, respondé: {"error": "No se detectó una pregunta de opción múltiple en la imagen"}`;
+
+let apiKey = localStorage.getItem('lp_api_key') || '';
+let model = localStorage.getItem('lp_model') || DEFAULT_MODEL;
+
+function updateApiDot() {
+  const dot = $('api-dot');
+  if (apiKey) { dot.classList.remove('off'); dot.title = 'API conectada'; }
+  else         { dot.classList.add('off');    dot.title = 'API no configurada'; }
+}
+updateApiDot();
+
+$('cfg-toggle').onclick = () => {
+  const p = $('cfg-panel');
+  p.style.display = p.style.display === 'none' ? 'flex' : 'none';
+  if (p.style.display === 'flex') {
+    $('apikey-input').value = apiKey;
+    $('model-input').value = model;
+  }
+};
+$('cfg-save').onclick = () => {
+  apiKey = $('apikey-input').value.trim();
+  localStorage.setItem('lp_api_key', apiKey);
+  updateApiDot();
+  showToast(apiKey ? 'API Key guardada' : 'API Key borrada', apiKey ? 'ok' : '');
+};
+$('model-save').onclick = () => {
+  model = $('model-input').value.trim() || DEFAULT_MODEL;
+  localStorage.setItem('lp_model', model);
+  showToast('Modelo guardado: ' + model, 'ok');
+};
+
+// ==== toast ====
+let toastTimer;
+function showToast(msg, type='') {
+  const t = $('toast');
+  t.textContent = msg; t.className = 'show ' + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = ''; }, 3000);
+}
+
+// ==== camara ====
+const video = $('video'), snapshot = $('snapshot'), captureBtn = $('capture-btn');
+let running = false;
+
+$('startbtn').onclick = async () => { running ? stopCamera() : await startCamera(); };
+
+async function startCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false
+    });
+    video.srcObject = stream;
+    video.style.display = 'block'; snapshot.style.display = 'none';
+    running = true;
+    $('startbtn').textContent = '■ Detener'; $('startbtn').classList.add('on');
+    captureBtn.disabled = false;
+  } catch (e) { showToast('Error de cámara: ' + e.message, 'err'); }
+}
+function stopCamera() {
+  running = false;
+  $('startbtn').textContent = '▶ Iniciar cámara'; $('startbtn').classList.remove('on');
+  captureBtn.disabled = true;
+  if (video.srcObject) { video.srcObject.getTracks().forEach(t => t.stop()); video.srcObject = null; }
+}
+
+captureBtn.onclick = () => {
+  if (!apiKey) { showToast('Configurá tu API Key primero (⚙)', 'err'); $('cfg-panel').style.display = 'flex'; return; }
+  const canvas = document.createElement('canvas');
+  canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+  snapshot.src = dataUrl;
+  snapshot.style.display = 'block'; video.style.display = 'none';
+  analyze(dataUrl);
+};
+
+// ==== analisis via OpenRouter ====
+async function analyze(dataUrl) {
+  showLoading();
+  try {
+    const res = await fetch(OPENROUTER_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + apiKey,
+        'HTTP-Referer': location.href,
+        'X-Title': 'Lector de Preguntas'
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.2,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: PROMPT },
+            { type: 'image_url', image_url: { url: dataUrl } }
+          ]
+        }]
+      })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+    const raw = data.choices?.[0]?.message?.content || '';
+    const parsed = parseResult(raw);
+    renderResult(parsed, dataUrl);
+  } catch (e) {
+    renderError(e.message);
+  }
+}
+
+function parseResult(raw) {
+  const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+  const match = cleaned.match(/\{[\s\S]*\}/);
+  try { return JSON.parse(match ? match[0] : cleaned); }
+  catch (e) { return { error: 'No se pudo interpretar la respuesta del modelo', raw }; }
+}
+
+function showLoading() {
+  $('result-panel').innerHTML = '<div class="loading">⏳ Analizando pregunta...</div>';
+}
+
+function renderError(msg) {
+  $('result-panel').innerHTML = `<div class="result-empty" style="color:#f87171;">Error: ${escapeHtml(msg)}</div>
+    <div class="actions-row"><button id="btn-retry">🔄 Nueva foto</button></div>`;
+  $('btn-retry').onclick = resetToCamera;
+  showToast('Error al analizar', 'err');
+}
+
+function renderResult(r, dataUrl) {
+  if (r.error) { renderError(r.error); return; }
+  const opts = (r.opciones || []).map(o =>
+    `<div class="opt ${o.letra === r.correcta ? 'correct' : ''}">${escapeHtml(o.letra)}) ${escapeHtml(o.texto)}${o.letra === r.correcta ? ' ✓' : ''}</div>`
+  ).join('');
+  $('result-panel').innerHTML = `
+    <div class="q-text">${escapeHtml(r.pregunta || '')}</div>
+    ${opts}
+    ${r.explicacion ? `<div class="explicacion">${escapeHtml(r.explicacion)}</div>` : ''}
+    <div class="actions-row"><button id="btn-retry">🔄 Nueva foto</button></div>`;
+  $('btn-retry').onclick = resetToCamera;
+  showToast('Respuesta: ' + (r.correcta || '?'), 'ok');
+  saveHistory(r);
+}
+
+function resetToCamera() {
+  snapshot.style.display = 'none'; video.style.display = 'block';
+  $('result-panel').innerHTML = '<div class="result-empty" id="result-empty">Apuntá a la próxima pregunta y capturá</div>';
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+// ==== historial ====
+let records = JSON.parse(localStorage.getItem('lp_records') || '[]');
+
+function saveHistory(r) {
+  records.unshift({ pregunta: r.pregunta, correcta: r.correcta, opciones: r.opciones, explicacion: r.explicacion, ts: Date.now() });
+  records = records.slice(0, 50);
+  localStorage.setItem('lp_records', JSON.stringify(records));
+  renderHistory();
+}
+
+function renderHistory() {
+  const el = $('history');
+  if (!records.length) { el.innerHTML = '<div class="history-empty">Sin preguntas aún</div>'; return; }
+  el.innerHTML = records.map(r => `
+    <div class="record">
+      <div class="q">${escapeHtml(r.pregunta || '')}</div>
+      <div class="a">Correcta: ${escapeHtml(r.correcta || '?')}</div>
+      <div class="t">${new Date(r.ts).toLocaleString('es-AR')}</div>
+    </div>`).join('');
+}
+
+$('btn-clear').onclick = () => {
+  if (confirm('¿Borrar todo el historial?')) { records = []; localStorage.removeItem('lp_records'); renderHistory(); }
+};
+
+// ==== init ====
+renderHistory();
+</script>
+</body>
+</html>
