@@ -145,7 +145,7 @@ $('cfg-toggle').onclick = () => {
   }
 };
 $('cfg-save').onclick = () => {
-  apiKey = $('apikey-input').value.trim();
+  apiKey = $('apikey-input').value.replace(/\s+/g, '');
   localStorage.setItem('lp_api_key', apiKey);
   updateApiDot();
   showToast(apiKey ? 'API Key guardada' : 'API Key borrada', apiKey ? 'ok' : '');
@@ -227,7 +227,7 @@ async function analyze(dataUrl) {
       })
     });
     const data = await res.json();
-    if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+    if (data.error) throw new Error((data.error.message || JSON.stringify(data.error)) + ' (HTTP ' + res.status + ')');
     const raw = data.choices?.[0]?.message?.content || '';
     const parsed = parseResult(raw);
     renderResult(parsed, dataUrl);
