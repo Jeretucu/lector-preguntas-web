@@ -71,7 +71,7 @@ h1 { font-size:1.1rem; } h1 span { color:#4fc3f7; }
 .record { background:#1f2937; border-radius:8px; padding:10px 12px; margin-bottom:8px;
           border-left:5px solid #22c55e; cursor:pointer; }
 .record .q { font-size:.85rem; color:#e5e7eb; }
-.record .a { font-size:.8rem; color:#4ade80; font-weight:700; margin-top:3px; }
+.record .a { font-size:.8rem; color:#4ade80; font-weight:700; margin-top:3px; white-space:pre-line; }
 .record .t { font-size:.7rem; color:#6b7280; margin-top:2px; }
 .history-empty { color:#374151; font-style:italic; text-align:center; padding:20px; }
 </style>
@@ -123,9 +123,13 @@ const $ = id => document.getElementById(id);
 // ==== config ====
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const DEFAULT_MODEL = 'google/gemini-2.5-flash';
-const PROMPT = `Sos un asistente que responde preguntas de opción múltiple mostradas en una imagen (foto de una pantalla). Analizá la imagen, identificá el enunciado de la pregunta y las opciones disponibles, y determiná cuál es la opción correcta.
+const PROMPT = `Sos un asistente que responde preguntas de opción múltiple mostradas en una imagen (foto de una pantalla). Analizá la imagen, identificá la pregunta y las opciones, y determiná cuál es la opción correcta.
 Respondé ÚNICAMENTE con un JSON válido, sin texto adicional, sin bloques de código markdown, con este formato exacto:
-{"pregunta": "enunciado de la pregunta", "opciones": [{"letra": "A", "texto": "..."}, {"letra": "B", "texto": "..."}], "correcta": "B", "explicacion": "breve justificación de por qué es la opción correcta"}
+{"pregunta": "enunciado de la pregunta", "respuesta": "texto EXACTO de la opción correcta, copiado tal cual aparece en la imagen"}
+Reglas para "respuesta":
+- NO la traduzcas. Copiala en el idioma original de la imagen, letra por letra.
+- NO incluyas la letra ni el número de la opción (nada de "A.", "B)", etc.), solo el texto de la opción.
+- Si hay más de una opción correcta (ej. "Choose 2 answers"), poné el texto completo de cada una separado por un salto de línea "\\n".
 Si la imagen no contiene una pregunta de opción múltiple legible, respondé: {"error": "No se detectó una pregunta de opción múltiple en la imagen"}`;
 
 let apiKey = localStorage.getItem('lp_api_key') || '';
@@ -263,13 +267,15 @@ function renderError(msg) {
 
 function renderResult(r, dataUrl) {
   if (r.error) { renderError(r.error); return; }
-  const correctOpt = (r.opciones || []).find(o => o.letra === r.correcta);
-  const answerText = correctOpt ? `${correctOpt.letra}. ${correctOpt.texto}` : (r.correcta || '?');
+  const lines = String(r.respuesta || '').split('\n').map(s => s.trim()).filter(Boolean);
+  const answerHtml = lines.length
+    ? lines.map(l => `<div class="answer-big">${escapeHtml(l)}</div>`).join('')
+    : `<div class="answer-big">?</div>`;
   $('result-panel').innerHTML = `
-    <div class="answer-big">${escapeHtml(answerText)}</div>
+    ${answerHtml}
     <div class="actions-row"><button id="btn-retry">🔄 Nueva foto</button></div>`;
   $('btn-retry').onclick = resetToCamera;
-  showToast('Respuesta: ' + (r.correcta || '?'), 'ok');
+  showToast('Respuesta lista', 'ok');
   saveHistory(r);
 }
 
@@ -286,7 +292,7 @@ function escapeHtml(s) {
 let records = JSON.parse(localStorage.getItem('lp_records') || '[]');
 
 function saveHistory(r) {
-  records.unshift({ pregunta: r.pregunta, correcta: r.correcta, opciones: r.opciones, explicacion: r.explicacion, ts: Date.now() });
+  records.unshift({ pregunta: r.pregunta, respuesta: r.respuesta, ts: Date.now() });
   records = records.slice(0, 50);
   localStorage.setItem('lp_records', JSON.stringify(records));
   renderHistory();
@@ -298,7 +304,7 @@ function renderHistory() {
   el.innerHTML = records.map(r => `
     <div class="record">
       <div class="q">${escapeHtml(r.pregunta || '')}</div>
-      <div class="a">Correcta: ${escapeHtml(r.correcta || '?')}</div>
+      <div class="a">${escapeHtml(r.respuesta || '?')}</div>
       <div class="t">${new Date(r.ts).toLocaleString('es-AR')}</div>
     </div>`).join('');
 }
