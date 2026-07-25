@@ -35,10 +35,10 @@ h1 { font-size:1.1rem; } h1 span { color:#4fc3f7; }
 .stage { position:relative; background:#000; width:100%; }
 #video { width:100%; display:block; max-height:45vh; object-fit:contain; background:#000; }
 #snapshot { width:100%; display:none; max-height:45vh; object-fit:contain; background:#000; }
-#capture-btn { position:absolute; bottom:12px; left:50%; transform:translateX(-50%);
-               width:60px; height:60px; border-radius:50%; background:#fff; border:4px solid #9ca3af;
-               cursor:pointer; }
-#capture-btn:disabled { opacity:.3; }
+#remote-status { position:absolute; bottom:10px; left:50%; transform:translateX(-50%);
+                 background:rgba(0,0,0,.6); padding:5px 12px; border-radius:20px;
+                 font-size:.78rem; color:#9ca3af; }
+#remote-status.linked { color:#4ade80; }
 
 /* ---- panel resultado ---- */
 .result-panel { padding:14px; border-bottom:1px solid #1f2937; }
@@ -104,7 +104,7 @@ h1 { font-size:1.1rem; } h1 span { color:#4fc3f7; }
 <div class="stage">
   <video id="video" playsinline muted autoplay></video>
   <img id="snapshot" alt="captura" />
-  <button id="capture-btn" disabled title="Capturar"></button>
+  <div id="remote-status">Iniciá la cámara para habilitar el disparo remoto</div>
 </div>
 
 <div class="result-panel" id="result-panel">
@@ -117,7 +117,22 @@ h1 { font-size:1.1rem; } h1 span { color:#4fc3f7; }
 </div>
 <div id="history"></div>
 
-<script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
+import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAA7f_lOBBgEWTnY2sMyJgTGopwwkY13uY",
+  authDomain: "lector-preguntas.firebaseapp.com",
+  databaseURL: "https://lector-preguntas-default-rtdb.firebaseio.com",
+  projectId: "lector-preguntas",
+  storageBucket: "lector-preguntas.firebasestorage.app",
+  messagingSenderId: "243188251668",
+  appId: "1:243188251668:web:27169742115518ab0cbb01"
+};
+const fbApp = initializeApp(firebaseConfig);
+const db = getDatabase(fbApp);
+
 const $ = id => document.getElementById(id);
 
 // ==== config ====
@@ -177,7 +192,7 @@ function showToast(msg, type='') {
 }
 
 // ==== camara ====
-const video = $('video'), snapshot = $('snapshot'), captureBtn = $('capture-btn');
+const video = $('video'), snapshot = $('snapshot'), remoteStatus = $('remote-status');
 let running = false;
 
 $('startbtn').onclick = async () => { running ? stopCamera() : await startCamera(); };
@@ -192,17 +207,20 @@ async function startCamera() {
     video.style.display = 'block'; snapshot.style.display = 'none';
     running = true;
     $('startbtn').textContent = '■ Detener'; $('startbtn').classList.add('on');
-    captureBtn.disabled = false;
+    remoteStatus.textContent = '🟢 Lista para disparo remoto';
+    remoteStatus.classList.add('linked');
   } catch (e) { showToast('Error de cámara: ' + e.message, 'err'); }
 }
 function stopCamera() {
   running = false;
   $('startbtn').textContent = '▶ Iniciar cámara'; $('startbtn').classList.remove('on');
-  captureBtn.disabled = true;
+  remoteStatus.textContent = 'Iniciá la cámara para habilitar el disparo remoto';
+  remoteStatus.classList.remove('linked');
   if (video.srcObject) { video.srcObject.getTracks().forEach(t => t.stop()); video.srcObject = null; }
 }
 
-captureBtn.onclick = () => {
+function captureAndAnalyze() {
+  if (!running) { showToast('La cámara no está iniciada en este dispositivo', 'err'); return; }
   if (!apiKey) { showToast('Configurá tu API Key primero (⚙)', 'err'); $('cfg-panel').style.display = 'flex'; return; }
   const canvas = document.createElement('canvas');
   canvas.width = video.videoWidth; canvas.height = video.videoHeight;
@@ -211,7 +229,14 @@ captureBtn.onclick = () => {
   snapshot.src = dataUrl;
   snapshot.style.display = 'block'; video.style.display = 'none';
   analyze(dataUrl);
-};
+}
+
+// ==== disparo remoto (Firebase) ====
+let sawInitialTrigger = false;
+onValue(ref(db, 'trigger'), (snap) => {
+  if (!sawInitialTrigger) { sawInitialTrigger = true; return; }
+  if (snap.val()) captureAndAnalyze();
+});
 
 // ==== analisis via OpenRouter ====
 async function analyze(dataUrl) {
@@ -259,10 +284,10 @@ function showLoading() {
 }
 
 function renderError(msg) {
-  $('result-panel').innerHTML = `<div class="result-empty" style="color:#f87171;">Error: ${escapeHtml(msg)}</div>
-    <div class="actions-row"><button id="btn-retry">🔄 Nueva foto</button></div>`;
-  $('btn-retry').onclick = resetToCamera;
+  $('result-panel').innerHTML = `<div class="result-empty" style="color:#f87171;">Error: ${escapeHtml(msg)}</div>`;
   showToast('Error al analizar', 'err');
+  publishResult({ error: msg });
+  scheduleAutoReset();
 }
 
 function renderResult(r, dataUrl) {
@@ -271,17 +296,31 @@ function renderResult(r, dataUrl) {
   const answerHtml = lines.length
     ? lines.map(l => `<div class="answer-big">${escapeHtml(l)}</div>`).join('')
     : `<div class="answer-big">?</div>`;
-  $('result-panel').innerHTML = `
-    ${answerHtml}
-    <div class="actions-row"><button id="btn-retry">🔄 Nueva foto</button></div>`;
-  $('btn-retry').onclick = resetToCamera;
-  showToast('Respuesta lista', 'ok');
+  $('result-panel').innerHTML = answerHtml;
+  showToast('Respuesta enviada al control', 'ok');
   saveHistory(r);
+  publishResult(r);
+  scheduleAutoReset();
+}
+
+function publishResult(r) {
+  set(ref(db, 'result'), {
+    pregunta: r.pregunta || '',
+    respuesta: r.respuesta || '',
+    error: r.error || null,
+    ts: Date.now()
+  });
+}
+
+let autoResetTimer;
+function scheduleAutoReset() {
+  clearTimeout(autoResetTimer);
+  autoResetTimer = setTimeout(resetToCamera, 4000);
 }
 
 function resetToCamera() {
   snapshot.style.display = 'none'; video.style.display = 'block';
-  $('result-panel').innerHTML = '<div class="result-empty" id="result-empty">Apuntá a la próxima pregunta y capturá</div>';
+  $('result-panel').innerHTML = '<div class="result-empty" id="result-empty">Esperando disparo remoto...</div>';
 }
 
 function escapeHtml(s) {
