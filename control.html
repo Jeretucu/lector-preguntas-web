@@ -13,15 +13,29 @@ header { padding:10px 14px; display:flex; align-items:center; justify-content:sp
 h1 { font-size:1.1rem; } h1 span { color:#4fc3f7; }
 .link-dot { width:7px; height:7px; border-radius:50%; background:#22c55e; display:inline-block; margin-right:5px; }
 .link-dot.off { background:#374151; }
+#cfg-toggle { background:none; border:none; color:#6b7280; font-size:1.15rem; cursor:pointer; padding:2px 6px; }
+#cfg-toggle:hover { color:#e5e7eb; }
+#mode-toggle { padding:5px 10px; border:1px solid #374151; border-radius:16px; background:#1f2937;
+               color:#e5e7eb; font-size:.75rem; font-weight:600; cursor:pointer; white-space:nowrap; }
+
+#cfg-panel { background:#111827; border-bottom:1px solid #1f2937; padding:10px 14px;
+             display:flex; flex-direction:column; gap:7px; }
+.cfg-row { display:flex; gap:8px; align-items:center; }
+.cfg-row label { font-size:.72rem; color:#9ca3af; white-space:nowrap; min-width:56px; }
+.cfg-row input { flex:1; background:#1f2937; border:1px solid #374151; border-radius:8px;
+                 padding:7px 10px; color:#e5e7eb; font-size:.8rem; font-family:monospace; }
+.cfg-row button { padding:7px 12px; border:none; border-radius:8px; background:#2563eb;
+                  color:#fff; font-size:.8rem; font-weight:600; cursor:pointer; white-space:nowrap; }
+.cfg-hint { font-size:.68rem; color:#4b5563; }
 
 .preview-wrap { position:relative; background:#000; width:100%; max-height:26vh; min-height:14vh;
                 display:flex; align-items:center; justify-content:center; border-bottom:1px solid #1f2937; overflow:hidden; }
-#preview-img { width:100%; max-height:26vh; object-fit:contain; display:none; }
+#preview-img, #local-video { width:100%; max-height:26vh; object-fit:contain; display:none; }
 #preview-empty { color:#374151; font-style:italic; font-size:.85rem; text-align:center; padding:10px; }
 
 .answer-area { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
                padding:24px 16px; border-bottom:1px solid #1f2937; min-height:26vh; }
-.answer-big { font-size:2rem; font-weight:800; color:#4ade80; text-align:center; line-height:1.3; margin:6px 0; }
+.answer-big { font-size:1.3rem; font-weight:800; color:#4ade80; text-align:center; line-height:1.3; margin:6px 0; }
 .answer-empty { color:#374151; font-style:italic; font-size:1rem; text-align:center; }
 .answer-q { color:#6b7280; font-size:.85rem; text-align:center; margin-bottom:14px; }
 
@@ -52,13 +66,31 @@ h1 { font-size:1.1rem; } h1 span { color:#4fc3f7; }
 <body>
 <header>
   <h1>🎮 <span>Control</span></h1>
-  <div style="display:flex;align-items:center;gap:6px;font-size:.75rem;color:#9ca3af;">
-    <span id="link-dot" class="link-dot off"></span>Cámara
+  <div style="display:flex;align-items:center;gap:8px;">
+    <span style="display:flex;align-items:center;gap:6px;font-size:.75rem;color:#9ca3af;">
+      <span id="link-dot" class="link-dot off"></span>Cámara
+    </span>
+    <button id="cfg-toggle" title="Configurar API Key">⚙</button>
+    <button id="mode-toggle">📡 Cámara remota</button>
   </div>
 </header>
+<div id="cfg-panel" style="display:none;">
+  <div class="cfg-row">
+    <label>API Key</label>
+    <input id="apikey-input" type="password" placeholder="OpenRouter API Key (sk-or-...)" />
+    <button id="cfg-save">OK</button>
+  </div>
+  <div class="cfg-row">
+    <label>Modelo</label>
+    <input id="model-input" type="text" placeholder="google/gemini-2.5-pro" />
+    <button id="model-save">OK</button>
+  </div>
+  <div class="cfg-hint">Solo hace falta si usás "esta cámara" (modo local). En modo remoto, la key vive en el otro dispositivo.</div>
+</div>
 
 <div class="preview-wrap">
   <img id="preview-img" alt="vista de la cámara" />
+  <video id="local-video" playsinline muted autoplay></video>
   <div id="preview-empty">Sin señal de la cámara</div>
 </div>
 
@@ -110,31 +142,167 @@ function showToast(msg, type='') {
   toastTimer = setTimeout(() => { t.className = ''; }, 3000);
 }
 
+// ==== config (solo hace falta en modo camara local) ====
+const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const DEFAULT_MODEL = 'google/gemini-2.5-pro';
+const PROMPT = `Sos un asistente que responde preguntas de opción múltiple mostradas en una imagen (foto de una pantalla). Analizá la imagen, identificá la pregunta y las opciones, y determiná cuál es la opción correcta.
+Respondé ÚNICAMENTE con un JSON válido, sin texto adicional, sin bloques de código markdown, con este formato exacto:
+{"pregunta": "enunciado de la pregunta", "respuesta": "texto EXACTO de la opción correcta, copiado tal cual aparece en la imagen"}
+Reglas para "respuesta":
+- NO la traduzcas. Copiala en el idioma original de la imagen, letra por letra.
+- Incluí la letra o número que identifica la opción tal cual aparece en la imagen (ej. "B. Set the Fiscal Year to Custom..."), seguido del texto completo de la opción.
+- Si hay más de una opción correcta (ej. "Choose 2 answers"), poné cada una en una línea separada por un salto de línea "\\n", cada una con su letra/número correspondiente.
+Si la imagen no contiene una pregunta de opción múltiple legible, respondé: {"error": "No se detectó una pregunta de opción múltiple en la imagen"}`;
+
+let apiKey = localStorage.getItem('lp_api_key') || '';
+let model = localStorage.getItem('lp_model') || DEFAULT_MODEL;
+
+$('cfg-toggle').onclick = () => {
+  const p = $('cfg-panel');
+  p.style.display = p.style.display === 'none' ? 'flex' : 'none';
+  if (p.style.display === 'flex') {
+    $('apikey-input').value = apiKey;
+    $('model-input').value = model;
+  }
+};
+$('cfg-save').onclick = () => {
+  apiKey = $('apikey-input').value.replace(/\s+/g, '');
+  localStorage.setItem('lp_api_key', apiKey);
+  showToast(apiKey ? 'API Key guardada' : 'API Key borrada', apiKey ? 'ok' : '');
+};
+$('model-save').onclick = () => {
+  model = $('model-input').value.trim() || DEFAULT_MODEL;
+  localStorage.setItem('lp_model', model);
+  showToast('Modelo guardado: ' + model, 'ok');
+};
+
+function parseResult(raw) {
+  const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+  const match = cleaned.match(/\{[\s\S]*\}/);
+  try { return JSON.parse(match ? match[0] : cleaned); }
+  catch (e) { return { error: 'No se pudo interpretar la respuesta del modelo' }; }
+}
+
+async function analyzeImage(dataUrl) {
+  const res = await fetch(OPENROUTER_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + apiKey,
+      'HTTP-Referer': location.href,
+      'X-Title': 'Lector de Preguntas (control)'
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.2,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: PROMPT },
+          { type: 'image_url', image_url: { url: dataUrl } }
+        ]
+      }]
+    })
+  });
+  const data = await res.json();
+  if (data.error) throw new Error((data.error.message || JSON.stringify(data.error)) + ' (HTTP ' + res.status + ')');
+  return parseResult(data.choices?.[0]?.message?.content || '');
+}
+
+// ==== modo: camara remota vs camara de este dispositivo ====
+let mode = localStorage.getItem('ctrl_mode') || 'remote';
+let localStream = null;
+const localVideo = $('local-video');
+
+function applyMode() {
+  const modeBtn = $('mode-toggle');
+  if (mode === 'local') {
+    modeBtn.textContent = '📷 Esta cámara';
+    $('preview-img').style.display = 'none';
+    startLocalCamera();
+  } else {
+    modeBtn.textContent = '📡 Cámara remota';
+    stopLocalCamera();
+  }
+}
+
+$('mode-toggle').onclick = async () => {
+  mode = mode === 'remote' ? 'local' : 'remote';
+  localStorage.setItem('ctrl_mode', mode);
+  applyMode();
+};
+
+async function startLocalCamera() {
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false
+    });
+    localVideo.srcObject = localStream;
+    localVideo.style.display = 'block';
+    $('preview-empty').style.display = 'none';
+  } catch (e) {
+    showToast('Error de cámara: ' + e.message, 'err');
+    mode = 'remote'; localStorage.setItem('ctrl_mode', mode); applyMode();
+  }
+}
+function stopLocalCamera() {
+  if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+  localVideo.srcObject = null;
+  localVideo.style.display = 'none';
+}
+
 shootBtn.onclick = () => {
+  if (mode === 'local') { shootLocal(); return; }
   waiting = true;
   shootBtn.disabled = true; shootBtn.classList.add('waiting'); shootBtn.textContent = '⏳';
   $('answer-area').innerHTML = '<div class="answer-empty">⏳ Analizando pregunta...</div>';
   set(ref(db, 'trigger'), { ts: Date.now() });
 };
 
+async function shootLocal() {
+  if (!apiKey) { showToast('Configurá tu API Key primero (⚙)', 'err'); $('cfg-panel').style.display = 'flex'; return; }
+  if (!localVideo.videoWidth) { showToast('La cámara todavía no está lista', 'err'); return; }
+  waiting = true;
+  shootBtn.disabled = true; shootBtn.classList.add('waiting'); shootBtn.textContent = '⏳';
+  $('answer-area').innerHTML = '<div class="answer-empty">⏳ Analizando pregunta...</div>';
+  const canvas = document.createElement('canvas');
+  canvas.width = localVideo.videoWidth; canvas.height = localVideo.videoHeight;
+  canvas.getContext('2d').drawImage(localVideo, 0, 0);
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+  try {
+    const r = await analyzeImage(dataUrl);
+    renderAnswer(r);
+    stopWaiting();
+    if (!r.error) { saveHistory(r); showToast('Respuesta lista', 'ok'); }
+    else showToast('Error al analizar', 'err');
+  } catch (e) {
+    renderAnswer({ error: e.message });
+    stopWaiting();
+    showToast('Error al analizar', 'err');
+  }
+}
+
 function stopWaiting() {
   waiting = false;
   shootBtn.disabled = false; shootBtn.classList.remove('waiting'); shootBtn.textContent = '📸';
 }
 
-// ==== vista previa en vivo de la camara ====
+// ==== vista previa en vivo de la camara remota ====
 onValue(ref(db, 'preview'), (snap) => {
+  if (mode !== 'remote') return;
   const p = snap.val();
   const img = $('preview-img'), empty = $('preview-empty');
   if (p && p.img) { img.src = p.img; img.style.display = 'block'; empty.style.display = 'none'; }
   else { img.style.display = 'none'; empty.style.display = 'block'; }
 });
 
-// ==== resultado en vivo desde la camara ====
+// ==== resultado en vivo desde la camara remota ====
 onValue(ref(db, 'result'), (snap) => {
   const r = snap.val();
   if (!r) return;
   $('link-dot').classList.remove('off');
+  if (mode !== 'remote') return;
   renderAnswer(r);
   if (waiting) { stopWaiting(); saveHistory(r); showToast(r.error ? 'Error' : 'Respuesta lista', r.error ? 'err' : 'ok'); }
 });
@@ -179,6 +347,7 @@ $('btn-clear').onclick = () => {
 };
 
 renderHistory();
+applyMode();
 </script>
 </body>
 </html>
