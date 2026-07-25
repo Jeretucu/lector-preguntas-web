@@ -235,6 +235,7 @@ async function startCamera() {
     zoom = Math.min(Math.max(zoom, zoomMin), zoomMax);
     zoomOutBtn.disabled = false; zoomInBtn.disabled = false;
     applyZoom();
+    startPreviewStream();
   } catch (e) { showToast('Error de cámara: ' + e.message, 'err'); }
 }
 function stopCamera() {
@@ -245,6 +246,34 @@ function stopCamera() {
   zoomOutBtn.disabled = true; zoomInBtn.disabled = true;
   if (video.srcObject) { video.srcObject.getTracks().forEach(t => t.stop()); video.srcObject = null; }
   track = null;
+  stopPreviewStream();
+}
+
+// ==== vista previa remota (foto chica cada ~2s para el dispositivo control) ====
+let previewTimer = null;
+const previewCanvas = document.createElement('canvas');
+previewCanvas.width = 320;
+
+function startPreviewStream() {
+  stopPreviewStream();
+  previewTimer = setInterval(() => {
+    if (!running || !video.videoWidth) return;
+    const vw = video.videoWidth, vh = video.videoHeight;
+    previewCanvas.height = Math.round(320 * vh / vw);
+    const pctx = previewCanvas.getContext('2d');
+    if (!hwZoom && zoom > 1) {
+      const cropW = vw / zoom, cropH = vh / zoom;
+      const sx = (vw - cropW) / 2, sy = (vh - cropH) / 2;
+      pctx.drawImage(video, sx, sy, cropW, cropH, 0, 0, previewCanvas.width, previewCanvas.height);
+    } else {
+      pctx.drawImage(video, 0, 0, previewCanvas.width, previewCanvas.height);
+    }
+    set(ref(db, 'preview'), { img: previewCanvas.toDataURL('image/jpeg', 0.5), ts: Date.now() });
+  }, 2000);
+}
+function stopPreviewStream() {
+  if (previewTimer) { clearInterval(previewTimer); previewTimer = null; }
+  set(ref(db, 'preview'), null);
 }
 
 function applyZoom() {
