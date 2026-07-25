@@ -143,8 +143,8 @@ Respondé ÚNICAMENTE con un JSON válido, sin texto adicional, sin bloques de c
 {"pregunta": "enunciado de la pregunta", "respuesta": "texto EXACTO de la opción correcta, copiado tal cual aparece en la imagen"}
 Reglas para "respuesta":
 - NO la traduzcas. Copiala en el idioma original de la imagen, letra por letra.
-- NO incluyas la letra ni el número de la opción (nada de "A.", "B)", etc.), solo el texto de la opción.
-- Si hay más de una opción correcta (ej. "Choose 2 answers"), poné el texto completo de cada una separado por un salto de línea "\\n".
+- Incluí la letra o número que identifica la opción tal cual aparece en la imagen (ej. "B. Set the Fiscal Year to Custom..."), seguido del texto completo de la opción.
+- Si hay más de una opción correcta (ej. "Choose 2 answers"), poné cada una en una línea separada por un salto de línea "\\n", cada una con su letra/número correspondiente.
 Si la imagen no contiene una pregunta de opción múltiple legible, respondé: {"error": "No se detectó una pregunta de opción múltiple en la imagen"}`;
 
 let apiKey = localStorage.getItem('lp_api_key') || '';
