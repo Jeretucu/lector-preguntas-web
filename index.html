@@ -101,7 +101,7 @@ h1 { font-size:1.1rem; } h1 span { color:#4fc3f7; }
   </div>
   <div class="cfg-row">
     <label>Modelo</label>
-    <input id="model-input" type="text" placeholder="google/gemini-2.5-flash" />
+    <input id="model-input" type="text" placeholder="google/gemini-2.5-pro" />
     <button id="model-save">OK</button>
   </div>
   <div class="cfg-hint">La key se guarda solo en este navegador (localStorage). Conseguila en openrouter.ai/keys</div>
@@ -151,7 +151,7 @@ const $ = id => document.getElementById(id);
 
 // ==== config ====
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const DEFAULT_MODEL = 'google/gemini-2.5-flash';
+const DEFAULT_MODEL = 'google/gemini-2.5-pro';
 const PROMPT = `Sos un asistente que responde preguntas de opción múltiple mostradas en una imagen (foto de una pantalla). Analizá la imagen, identificá la pregunta y las opciones, y determiná cuál es la opción correcta.
 Respondé ÚNICAMENTE con un JSON válido, sin texto adicional, sin bloques de código markdown, con este formato exacto:
 {"pregunta": "enunciado de la pregunta", "respuesta": "texto EXACTO de la opción correcta, copiado tal cual aparece en la imagen"}
