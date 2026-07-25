@@ -32,13 +32,21 @@ h1 { font-size:1.1rem; } h1 span { color:#4fc3f7; }
 .cfg-hint { font-size:.68rem; color:#4b5563; }
 
 /* ---- stage / camara ---- */
-.stage { position:relative; background:#000; width:100%; }
-#video { width:100%; display:block; max-height:45vh; object-fit:contain; background:#000; }
+.stage { position:relative; background:#000; width:100%; max-height:45vh; overflow:hidden; }
+#video { width:100%; display:block; max-height:45vh; object-fit:contain; background:#000; transform-origin:center center; }
 #snapshot { width:100%; display:none; max-height:45vh; object-fit:contain; background:#000; }
 #remote-status { position:absolute; bottom:10px; left:50%; transform:translateX(-50%);
                  background:rgba(0,0,0,.6); padding:5px 12px; border-radius:20px;
                  font-size:.78rem; color:#9ca3af; }
 #remote-status.linked { color:#4ade80; }
+
+/* ---- zoom ---- */
+.zoom-bar { display:flex; align-items:center; justify-content:center; gap:14px; padding:8px 14px;
+            border-bottom:1px solid #1f2937; }
+.zoom-bar button { width:36px; height:36px; border-radius:50%; border:1px solid #374151; background:#1f2937;
+                    color:#e5e7eb; font-size:1.1rem; font-weight:700; cursor:pointer; }
+.zoom-bar button:disabled { opacity:.3; cursor:default; }
+#zoom-label { font-size:.85rem; color:#9ca3af; min-width:44px; text-align:center; }
 
 /* ---- panel resultado ---- */
 .result-panel { padding:14px; border-bottom:1px solid #1f2937; }
@@ -105,6 +113,12 @@ h1 { font-size:1.1rem; } h1 span { color:#4fc3f7; }
   <video id="video" playsinline muted autoplay></video>
   <img id="snapshot" alt="captura" />
   <div id="remote-status">Iniciá la cámara para habilitar el disparo remoto</div>
+</div>
+
+<div class="zoom-bar">
+  <button id="zoom-out" disabled>－</button>
+  <span id="zoom-label">1.0x</span>
+  <button id="zoom-in" disabled>＋</button>
 </div>
 
 <div class="result-panel" id="result-panel">
@@ -193,7 +207,10 @@ function showToast(msg, type='') {
 
 // ==== camara ====
 const video = $('video'), snapshot = $('snapshot'), remoteStatus = $('remote-status');
+const zoomOutBtn = $('zoom-out'), zoomInBtn = $('zoom-in'), zoomLabel = $('zoom-label');
 let running = false;
+let track = null, hwZoom = false, zoomMin = 1, zoomMax = 4, zoomStep = 0.25;
+let zoom = parseFloat(localStorage.getItem('lp_zoom') || '1');
 
 $('startbtn').onclick = async () => { running ? stopCamera() : await startCamera(); };
 
@@ -209,6 +226,15 @@ async function startCamera() {
     $('startbtn').textContent = '■ Detener'; $('startbtn').classList.add('on');
     remoteStatus.textContent = '🟢 Lista para disparo remoto';
     remoteStatus.classList.add('linked');
+
+    track = stream.getVideoTracks()[0];
+    const caps = track.getCapabilities ? track.getCapabilities() : {};
+    hwZoom = !!caps.zoom;
+    if (hwZoom) { zoomMin = caps.zoom.min; zoomMax = caps.zoom.max; zoomStep = caps.zoom.step || 0.5; }
+    else { zoomMin = 1; zoomMax = 4; zoomStep = 0.25; }
+    zoom = Math.min(Math.max(zoom, zoomMin), zoomMax);
+    zoomOutBtn.disabled = false; zoomInBtn.disabled = false;
+    applyZoom();
   } catch (e) { showToast('Error de cámara: ' + e.message, 'err'); }
 }
 function stopCamera() {
@@ -216,15 +242,37 @@ function stopCamera() {
   $('startbtn').textContent = '▶ Iniciar cámara'; $('startbtn').classList.remove('on');
   remoteStatus.textContent = 'Iniciá la cámara para habilitar el disparo remoto';
   remoteStatus.classList.remove('linked');
+  zoomOutBtn.disabled = true; zoomInBtn.disabled = true;
   if (video.srcObject) { video.srcObject.getTracks().forEach(t => t.stop()); video.srcObject = null; }
+  track = null;
 }
+
+function applyZoom() {
+  if (hwZoom && track) {
+    track.applyConstraints({ advanced: [{ zoom }] }).catch(() => {});
+    video.style.transform = 'none';
+  } else {
+    video.style.transform = `scale(${zoom})`;
+  }
+  zoomLabel.textContent = zoom.toFixed(1) + 'x';
+  localStorage.setItem('lp_zoom', zoom);
+}
+zoomOutBtn.onclick = () => { zoom = Math.max(zoomMin, +(zoom - zoomStep).toFixed(2)); applyZoom(); };
+zoomInBtn.onclick = () => { zoom = Math.min(zoomMax, +(zoom + zoomStep).toFixed(2)); applyZoom(); };
 
 function captureAndAnalyze() {
   if (!running) { showToast('La cámara no está iniciada en este dispositivo', 'err'); return; }
   if (!apiKey) { showToast('Configurá tu API Key primero (⚙)', 'err'); $('cfg-panel').style.display = 'flex'; return; }
   const canvas = document.createElement('canvas');
   canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-  canvas.getContext('2d').drawImage(video, 0, 0);
+  const ctx = canvas.getContext('2d');
+  if (!hwZoom && zoom > 1) {
+    const cropW = video.videoWidth / zoom, cropH = video.videoHeight / zoom;
+    const sx = (video.videoWidth - cropW) / 2, sy = (video.videoHeight - cropH) / 2;
+    ctx.drawImage(video, sx, sy, cropW, cropH, 0, 0, canvas.width, canvas.height);
+  } else {
+    ctx.drawImage(video, 0, 0);
+  }
   const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
   snapshot.src = dataUrl;
   snapshot.style.display = 'block'; video.style.display = 'none';
