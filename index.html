@@ -32,9 +32,9 @@ h1 { font-size:1.1rem; } h1 span { color:#4fc3f7; }
 .cfg-hint { font-size:.68rem; color:#4b5563; }
 
 /* ---- stage / camara ---- */
-.stage { position:relative; background:#000; width:100%; max-height:45vh; overflow:hidden; }
-#video { width:100%; display:block; max-height:45vh; object-fit:contain; background:#000; transform-origin:center center; }
-#snapshot { width:100%; display:none; max-height:45vh; object-fit:contain; background:#000; }
+.stage { position:relative; background:#000; width:100%; max-height:68vh; overflow:hidden; flex:1; }
+#video { width:100%; height:100%; display:block; max-height:68vh; object-fit:contain; background:#000; transform-origin:center center; }
+#snapshot { width:100%; height:100%; display:none; max-height:68vh; object-fit:contain; background:#000; }
 #remote-status { position:absolute; bottom:10px; left:50%; transform:translateX(-50%);
                  background:rgba(0,0,0,.6); padding:5px 12px; border-radius:20px;
                  font-size:.78rem; color:#9ca3af; }
@@ -71,17 +71,6 @@ h1 { font-size:1.1rem; } h1 span { color:#4fc3f7; }
 #toast.ok   { border-color:#22c55e; color:#4ade80; }
 #toast.err  { border-color:#dc2626; color:#f87171; }
 
-/* ---- historial ---- */
-.history-header { padding:10px 14px 6px; display:flex; justify-content:space-between; align-items:center; }
-.history-header h2 { font-size:.9rem; color:#9ca3af; }
-#btn-clear { font-size:.75rem; color:#6b7280; background:none; border:none; cursor:pointer; }
-#history { overflow-y:auto; flex:1; padding:0 14px 14px; }
-.record { background:#1f2937; border-radius:8px; padding:10px 12px; margin-bottom:8px;
-          border-left:5px solid #22c55e; cursor:pointer; }
-.record .q { font-size:.85rem; color:#e5e7eb; }
-.record .a { font-size:.8rem; color:#4ade80; font-weight:700; margin-top:3px; white-space:pre-line; }
-.record .t { font-size:.7rem; color:#6b7280; margin-top:2px; }
-.history-empty { color:#374151; font-style:italic; text-align:center; padding:20px; }
 </style>
 </head>
 <body>
@@ -124,12 +113,6 @@ h1 { font-size:1.1rem; } h1 span { color:#4fc3f7; }
 <div class="result-panel" id="result-panel">
   <div class="result-empty" id="result-empty">Iniciá la cámara y apuntá a la pregunta</div>
 </div>
-
-<div class="history-header">
-  <h2>Historial</h2>
-  <button id="btn-clear">Limpiar todo</button>
-</div>
-<div id="history"></div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
@@ -390,7 +373,6 @@ function renderResult(r, dataUrl) {
     : `<div class="answer-big">?</div>`;
   $('result-panel').innerHTML = answerHtml;
   showToast('Respuesta enviada al control', 'ok');
-  saveHistory(r);
   publishResult(r);
   scheduleAutoReset();
 }
@@ -419,33 +401,6 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
 
-// ==== historial ====
-let records = JSON.parse(localStorage.getItem('lp_records') || '[]');
-
-function saveHistory(r) {
-  records.unshift({ pregunta: r.pregunta, respuesta: r.respuesta, ts: Date.now() });
-  records = records.slice(0, 50);
-  localStorage.setItem('lp_records', JSON.stringify(records));
-  renderHistory();
-}
-
-function renderHistory() {
-  const el = $('history');
-  if (!records.length) { el.innerHTML = '<div class="history-empty">Sin preguntas aún</div>'; return; }
-  el.innerHTML = records.map(r => `
-    <div class="record">
-      <div class="q">${escapeHtml(r.pregunta || '')}</div>
-      <div class="a">${escapeHtml(r.respuesta || '?')}</div>
-      <div class="t">${new Date(r.ts).toLocaleString('es-AR')}</div>
-    </div>`).join('');
-}
-
-$('btn-clear').onclick = () => {
-  if (confirm('¿Borrar todo el historial?')) { records = []; localStorage.removeItem('lp_records'); renderHistory(); }
-};
-
-// ==== init ====
-renderHistory();
 </script>
 </body>
 </html>
