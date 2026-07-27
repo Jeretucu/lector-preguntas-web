@@ -290,8 +290,16 @@ zoomOutBtn.onclick = () => { zoom = Math.max(zoomMin, +(zoom - zoomStep).toFixed
 zoomInBtn.onclick = () => { zoom = Math.min(zoomMax, +(zoom + zoomStep).toFixed(2)); applyZoom(); };
 
 function captureAndAnalyze() {
-  if (!running) { showToast('La cámara no está iniciada en este dispositivo', 'err'); return; }
-  if (!apiKey) { showToast('Configurá tu API Key primero (⚙)', 'err'); $('cfg-panel').style.display = 'flex'; return; }
+  if (!running) {
+    showToast('La cámara no está iniciada en este dispositivo', 'err');
+    publishResult({ error: 'La cámara no está iniciada en el dispositivo cámara' });
+    return;
+  }
+  if (!apiKey) {
+    showToast('Configurá tu API Key primero (⚙)', 'err'); $('cfg-panel').style.display = 'flex';
+    publishResult({ error: 'Falta configurar la API Key en el dispositivo cámara' });
+    return;
+  }
   const canvas = document.createElement('canvas');
   canvas.width = video.videoWidth; canvas.height = video.videoHeight;
   const ctx = canvas.getContext('2d');

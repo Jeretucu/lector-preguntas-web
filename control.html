@@ -252,12 +252,22 @@ function stopLocalCamera() {
   localVideo.style.display = 'none';
 }
 
+const WAIT_TIMEOUT_MS = 25000;
+let waitTimeout = null;
+
 shootBtn.onclick = () => {
   if (mode === 'local') { shootLocal(); return; }
   waiting = true;
   shootBtn.disabled = true; shootBtn.classList.add('waiting'); shootBtn.textContent = '⏳';
   $('answer-area').innerHTML = '<div class="answer-empty">⏳ Analizando pregunta...</div>';
   set(ref(db, 'trigger'), { ts: Date.now() });
+  clearTimeout(waitTimeout);
+  waitTimeout = setTimeout(() => {
+    if (!waiting) return;
+    stopWaiting();
+    $('answer-area').innerHTML = '<div class="answer-empty" style="color:#f87171;">⏱ Sin respuesta de la cámara. ¿Está encendida, con la app abierta y la cámara iniciada?</div>';
+    showToast('Tiempo agotado esperando la cámara', 'err');
+  }, WAIT_TIMEOUT_MS);
 };
 
 async function shootLocal() {
@@ -304,7 +314,12 @@ onValue(ref(db, 'result'), (snap) => {
   $('link-dot').classList.remove('off');
   if (mode !== 'remote') return;
   renderAnswer(r);
-  if (waiting) { stopWaiting(); saveHistory(r); showToast(r.error ? 'Error' : 'Respuesta lista', r.error ? 'err' : 'ok'); }
+  if (waiting) {
+    clearTimeout(waitTimeout);
+    stopWaiting();
+    if (!r.error) saveHistory(r);
+    showToast(r.error ? 'Error: ' + r.error : 'Respuesta lista', r.error ? 'err' : 'ok');
+  }
 });
 
 function renderAnswer(r) {
