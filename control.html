@@ -183,27 +183,40 @@ function parseResult(raw) {
   catch (e) { return { error: 'No se pudo interpretar la respuesta del modelo' }; }
 }
 
+const ANALYZE_TIMEOUT_MS = 40000;
+
 async function analyzeImage(dataUrl) {
-  const res = await fetch(OPENROUTER_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + apiKey,
-      'HTTP-Referer': location.href,
-      'X-Title': 'Lector de Preguntas (control)'
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.2,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'text', text: PROMPT },
-          { type: 'image_url', image_url: { url: dataUrl } }
-        ]
-      }]
-    })
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), ANALYZE_TIMEOUT_MS);
+  let res;
+  try {
+    res = await fetch(OPENROUTER_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + apiKey,
+        'HTTP-Referer': location.href,
+        'X-Title': 'Lector de Preguntas (control)'
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.2,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: PROMPT },
+            { type: 'image_url', image_url: { url: dataUrl } }
+          ]
+        }]
+      }),
+      signal: controller.signal
+    });
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('El modelo tardó demasiado en responder (más de ' + (ANALYZE_TIMEOUT_MS / 1000) + 's)');
+    throw e;
+  } finally {
+    clearTimeout(timeoutId);
+  }
   const data = await res.json();
   if (data.error) throw new Error((data.error.message || JSON.stringify(data.error)) + ' (HTTP ' + res.status + ')');
   return parseResult(data.choices?.[0]?.message?.content || '');
@@ -252,7 +265,7 @@ function stopLocalCamera() {
   localVideo.style.display = 'none';
 }
 
-const WAIT_TIMEOUT_MS = 25000;
+const WAIT_TIMEOUT_MS = 50000;
 let waitTimeout = null;
 
 shootBtn.onclick = () => {

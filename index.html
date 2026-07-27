@@ -324,8 +324,12 @@ onValue(ref(db, 'trigger'), (snap) => {
 });
 
 // ==== analisis via OpenRouter ====
+const ANALYZE_TIMEOUT_MS = 40000;
+
 async function analyze(dataUrl) {
   showLoading();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), ANALYZE_TIMEOUT_MS);
   try {
     const res = await fetch(OPENROUTER_URL, {
       method: 'POST',
@@ -345,7 +349,8 @@ async function analyze(dataUrl) {
             { type: 'image_url', image_url: { url: dataUrl } }
           ]
         }]
-      })
+      }),
+      signal: controller.signal
     });
     const data = await res.json();
     if (data.error) throw new Error((data.error.message || JSON.stringify(data.error)) + ' (HTTP ' + res.status + ')');
@@ -353,7 +358,9 @@ async function analyze(dataUrl) {
     const parsed = parseResult(raw);
     renderResult(parsed, dataUrl);
   } catch (e) {
-    renderError(e.message);
+    renderError(e.name === 'AbortError' ? 'El modelo tardó demasiado en responder (más de ' + (ANALYZE_TIMEOUT_MS / 1000) + 's)' : e.message);
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
