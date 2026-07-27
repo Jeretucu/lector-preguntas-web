@@ -145,6 +145,13 @@ Reglas para "respuesta":
 Si la imagen no contiene una pregunta de opción múltiple legible, respondé: {"error": "No se detectó una pregunta de opción múltiple en la imagen"}`;
 
 let apiKey = localStorage.getItem('lp_api_key') || '';
+
+// fuerza el modelo por defecto una vez por cada cambio (para no depender de que el usuario lo retipee a mano)
+const DEFAULT_MODEL_VERSION = '2';
+if (localStorage.getItem('lp_model_version') !== DEFAULT_MODEL_VERSION) {
+  localStorage.setItem('lp_model', DEFAULT_MODEL);
+  localStorage.setItem('lp_model_version', DEFAULT_MODEL_VERSION);
+}
 let model = localStorage.getItem('lp_model') || DEFAULT_MODEL;
 
 function updateApiDot() {
