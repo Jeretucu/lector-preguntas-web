@@ -153,6 +153,7 @@ PASO 2: De esa lista que transcribiste, determiná cuál o cuáles son la opció
 Respondé ÚNICAMENTE con un JSON válido, sin texto adicional, sin bloques de código markdown, con este formato exacto:
 {"pregunta": "enunciado de la pregunta", "opciones": [{"letra": "A", "texto": "..."}, {"letra": "D", "texto": "..."}], "correctas": ["D"]}
 - "opciones" debe incluir TODAS las opciones de la pregunta (no solo la correcta), tal cual las transcribiste en el paso 1.
+- El campo "texto" de cada opción NO debe incluir la letra ni el punto/paréntesis (van por separado en "letra"). Ej: si en la imagen dice "A. Deployed My Domain...", entonces "letra" es "A" y "texto" es "Deployed My Domain..." (sin la "A." al principio).
 - "correctas" es un array con la letra o letras correctas (una sola si es de una respuesta, dos si dice "Choose 2 answers"), usando exactamente las mismas letras que pusiste en "opciones".
 Si la imagen no contiene una pregunta de opción múltiple legible, respondé: {"error": "No se detectó una pregunta de opción múltiple en la imagen"}`;
 
@@ -192,6 +193,11 @@ function parseResult(raw) {
   catch (e) { return { error: 'No se pudo interpretar la respuesta del modelo' }; }
 }
 
+// saca una letra/numero inicial tipo "A. " o "B) " que el modelo a veces repite dentro del texto
+function stripLeadingMarker(texto) {
+  return String(texto || '').replace(/^\s*[A-Za-z0-9]{1,2}[.)]\s*/, '').trim();
+}
+
 // arma "letra. texto" buscando cada letra correcta en la lista de opciones transcripta,
 // asi la letra final sale de una unica fuente (no de un segundo intento de "recordarla")
 function resolveAnswer(parsed) {
@@ -201,7 +207,7 @@ function resolveAnswer(parsed) {
   const lines = correctas
     .map(letra => {
       const opt = opts.find(o => String(o.letra).trim() === String(letra).trim());
-      return opt ? `${opt.letra}. ${opt.texto}` : String(letra);
+      return opt ? `${opt.letra}. ${stripLeadingMarker(opt.texto)}` : String(letra);
     })
     .filter(Boolean);
   if (!lines.length) return { error: 'El modelo no devolvió una respuesta interpretable' };
