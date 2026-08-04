@@ -145,14 +145,15 @@ function showToast(msg, type='') {
 // ==== config (solo hace falta en modo camara local) ====
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const DEFAULT_MODEL = 'openai/gpt-4o';
-const PROMPT = `Sos un asistente que responde preguntas de opción múltiple mostradas en una imagen (foto de una pantalla). Analizá la imagen, identificá la pregunta y las opciones, y determiná cuál es la opción correcta.
+const PROMPT = `Sos un asistente que responde preguntas de opción múltiple mostradas en una imagen (foto de una pantalla).
+Hacé esto en dos pasos:
+PASO 1: Transcribí TODAS las opciones visibles en la imagen, en el orden en que aparecen, cada una con la letra o número EXACTO que tiene pegado/al lado en la imagen (no asumas orden alfabético, copiá la letra real aunque estén desordenadas). NO traduzcas el texto, copialo tal cual en su idioma original.
+PASO 2: De esa lista que transcribiste, determiná cuál o cuáles son la opción correcta, y devolvé sus letras (tal cual las transcribiste en el paso 1).
+
 Respondé ÚNICAMENTE con un JSON válido, sin texto adicional, sin bloques de código markdown, con este formato exacto:
-{"pregunta": "enunciado de la pregunta", "respuesta": "texto EXACTO de la opción correcta, copiado tal cual aparece en la imagen"}
-Reglas para "respuesta":
-- NO la traduzcas. Copiala en el idioma original de la imagen, letra por letra.
-- Incluí la letra o número que identifica la opción tal cual aparece en la imagen (ej. "B. Set the Fiscal Year to Custom..."), seguido del texto completo de la opción.
-- IMPORTANTE: las opciones en la imagen pueden estar en cualquier orden, NO asumas que van en orden alfabético (A, B, C, D). Fijate con cuidado qué letra está pegada/al lado de cada texto en la imagen, y usá esa, aunque no coincida con el orden esperado.
-- Si hay más de una opción correcta (ej. "Choose 2 answers"), poné cada una en una línea separada por un salto de línea "\\n", cada una con su letra/número correspondiente.
+{"pregunta": "enunciado de la pregunta", "opciones": [{"letra": "A", "texto": "..."}, {"letra": "D", "texto": "..."}], "correctas": ["D"]}
+- "opciones" debe incluir TODAS las opciones de la pregunta (no solo la correcta), tal cual las transcribiste en el paso 1.
+- "correctas" es un array con la letra o letras correctas (una sola si es de una respuesta, dos si dice "Choose 2 answers"), usando exactamente las mismas letras que pusiste en "opciones".
 Si la imagen no contiene una pregunta de opción múltiple legible, respondé: {"error": "No se detectó una pregunta de opción múltiple en la imagen"}`;
 
 let apiKey = localStorage.getItem('lp_api_key') || '';
@@ -191,6 +192,22 @@ function parseResult(raw) {
   catch (e) { return { error: 'No se pudo interpretar la respuesta del modelo' }; }
 }
 
+// arma "letra. texto" buscando cada letra correcta en la lista de opciones transcripta,
+// asi la letra final sale de una unica fuente (no de un segundo intento de "recordarla")
+function resolveAnswer(parsed) {
+  if (parsed.error) return { error: parsed.error };
+  const opts = Array.isArray(parsed.opciones) ? parsed.opciones : [];
+  const correctas = Array.isArray(parsed.correctas) ? parsed.correctas : [];
+  const lines = correctas
+    .map(letra => {
+      const opt = opts.find(o => String(o.letra).trim() === String(letra).trim());
+      return opt ? `${opt.letra}. ${opt.texto}` : String(letra);
+    })
+    .filter(Boolean);
+  if (!lines.length) return { error: 'El modelo no devolvió una respuesta interpretable' };
+  return { pregunta: parsed.pregunta || '', respuesta: lines.join('\n') };
+}
+
 const ANALYZE_TIMEOUT_MS = 40000;
 
 async function analyzeImage(dataUrl) {
@@ -227,7 +244,7 @@ async function analyzeImage(dataUrl) {
   }
   const data = await res.json();
   if (data.error) throw new Error((data.error.message || JSON.stringify(data.error)) + ' (HTTP ' + res.status + ')');
-  return parseResult(data.choices?.[0]?.message?.content || '');
+  return resolveAnswer(parseResult(data.choices?.[0]?.message?.content || ''));
 }
 
 // ==== modo: camara remota vs camara de este dispositivo ====
