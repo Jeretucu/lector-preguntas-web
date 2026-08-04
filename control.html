@@ -82,7 +82,7 @@ h1 { font-size:1.1rem; } h1 span { color:#4fc3f7; }
   </div>
   <div class="cfg-row">
     <label>Modelo</label>
-    <input id="model-input" type="text" placeholder="openai/gpt-4o" />
+    <input id="model-input" type="text" placeholder="openai/o4-mini" />
     <button id="model-save">OK</button>
   </div>
   <div class="cfg-hint">Solo hace falta si usás "esta cámara" (modo local). En modo remoto, la key vive en el otro dispositivo.</div>
@@ -144,8 +144,8 @@ function showToast(msg, type='') {
 
 // ==== config (solo hace falta en modo camara local) ====
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const DEFAULT_MODEL = 'openai/gpt-4o';
-const PROMPT = `Sos un asistente que responde preguntas de opción múltiple mostradas en una imagen (foto de una pantalla).
+const DEFAULT_MODEL = 'openai/o4-mini';
+const PROMPT = `Sos un administrador certificado de Salesforce con experiencia profesional real (Salesforce Certified Administrator), respondiendo preguntas de opción múltiple mostradas en una imagen (foto de una pantalla).
 Hacé esto en dos pasos:
 PASO 1: Transcribí TODAS las opciones visibles en la imagen, en el orden en que aparecen, cada una con la letra o número EXACTO que tiene pegado/al lado en la imagen (no asumas orden alfabético, copiá la letra real aunque estén desordenadas). NO traduzcas el texto, copialo tal cual en su idioma original.
 PASO 2: De esa lista que transcribiste, determiná cuál o cuáles son la opción correcta, y devolvé sus letras (tal cual las transcribiste en el paso 1).
@@ -160,7 +160,7 @@ Si la imagen no contiene una pregunta de opción múltiple legible, respondé: {
 let apiKey = localStorage.getItem('lp_api_key') || '';
 
 // fuerza el modelo por defecto una vez por cada cambio (para no depender de que el usuario lo retipee a mano)
-const DEFAULT_MODEL_VERSION = '2';
+const DEFAULT_MODEL_VERSION = '3';
 if (localStorage.getItem('lp_model_version') !== DEFAULT_MODEL_VERSION) {
   localStorage.setItem('lp_model', DEFAULT_MODEL);
   localStorage.setItem('lp_model_version', DEFAULT_MODEL_VERSION);
@@ -214,7 +214,7 @@ function resolveAnswer(parsed) {
   return { pregunta: parsed.pregunta || '', respuesta: lines.join('\n') };
 }
 
-const ANALYZE_TIMEOUT_MS = 40000;
+const ANALYZE_TIMEOUT_MS = 60000;
 
 async function analyzeImage(dataUrl) {
   const controller = new AbortController();
@@ -296,7 +296,7 @@ function stopLocalCamera() {
   localVideo.style.display = 'none';
 }
 
-const WAIT_TIMEOUT_MS = 50000;
+const WAIT_TIMEOUT_MS = 75000;
 let waitTimeout = null;
 
 shootBtn.onclick = () => {
